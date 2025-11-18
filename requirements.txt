@@ -1,0 +1,4 @@
+flet==0.28.3
+websockets<14
+uvicorn<0.30
+yt-dlp==2025.11.12
