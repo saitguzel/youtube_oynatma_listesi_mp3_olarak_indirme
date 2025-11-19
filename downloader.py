@@ -76,7 +76,7 @@ def fetch_playlist_info(playlist_url, verbose: bool = False):
     return {"title": playlist_title, "entries": entries}
 
 
-def download_as_mp3(url, output_dir, progress_callback=None, verbose: bool = False):
+def download_as_mp3(url, output_dir, progress_callback=None, verbose: bool = False, order_index=None, title_override=None):
     """Download single youtube video and convert to mp3 using yt-dlp + ffmpeg.
 
     progress_callback(percent, status_text) is optional.
@@ -117,24 +117,66 @@ def download_as_mp3(url, output_dir, progress_callback=None, verbose: bool = Fal
 
     title = info.get("title", "unknown")
     vid_id = info.get("id", "")
-    if vid_id:
-        filename = f"{vid_id}_{title}.mp3"
-    else:
-        filename = f"{title}.mp3"
-    filepath = os.path.join(output_dir, filename)
 
-    if os.path.exists(filepath):
-        return filepath
+    if order_index is not None:
+        # Playlist sırasına göre nihai dosya adı: 1.Video Başlığı.mp3
+        final_title = title_override or title or "unknown"
+        final_filename = f"{order_index + 1}.{final_title}.mp3"
+        final_path = os.path.join(output_dir, final_filename)
+    else:
+        final_path = None
+
+    # yt-dlp tarafından oluşturulmuş olabilecek birkaç olası isim için temel mp3 yolu tahmini
+    default_filename = f"{vid_id}_{title}.mp3" if vid_id else f"{title}.mp3"
+    default_path = os.path.join(output_dir, default_filename)
+
+    # Eğer varsayılan isimde dosya varsa ve sıra bilgisi yoksa direkt onu döndür
+    if order_index is None:
+        if os.path.exists(default_path):
+            return default_path
+
+        id_prefix = (vid_id or "")
+        title_prefix = (title or "")[:8].lower()
+        for f in os.listdir(output_dir):
+            if not f.lower().endswith(".mp3"):
+                continue
+            lower = f.lower()
+            if id_prefix and lower.startswith(id_prefix.lower() + "_"):
+                return os.path.join(output_dir, f)
+            if not id_prefix and title_prefix and title_prefix in lower:
+                return os.path.join(output_dir, f)
+
+        raise FileNotFoundError("MP3 file not found after conversion.")
+
+    # order_index verilmişse, önce mevcut mp3 dosyasını bul, ardından N.Title.mp3 olarak yeniden adlandır
+    candidate_paths = []
+    if os.path.exists(default_path):
+        candidate_paths.append(default_path)
 
     id_prefix = (vid_id or "")
     title_prefix = (title or "")[:8].lower()
     for f in os.listdir(output_dir):
         if not f.lower().endswith(".mp3"):
             continue
+        full_path = os.path.join(output_dir, f)
+        if full_path in candidate_paths:
+            continue
         lower = f.lower()
         if id_prefix and lower.startswith(id_prefix.lower() + "_"):
-            return os.path.join(output_dir, f)
-        if not id_prefix and title_prefix and title_prefix in lower:
-            return os.path.join(output_dir, f)
+            candidate_paths.append(full_path)
+        elif not id_prefix and title_prefix and title_prefix in lower:
+            candidate_paths.append(full_path)
 
-    raise FileNotFoundError("MP3 file not found after conversion.")
+    if not candidate_paths and not os.path.exists(final_path):
+        raise FileNotFoundError("MP3 file not found after conversion.")
+
+    # Eğer hedef isim zaten mevcutsa onu döndür, aksi halde ilk bulunanı yeniden adlandır
+    if final_path and os.path.exists(final_path):
+        return final_path
+
+    src = candidate_paths[0] if candidate_paths else default_path
+    if src == final_path:
+        return final_path
+
+    os.replace(src, final_path)
+    return final_path

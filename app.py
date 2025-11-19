@@ -181,21 +181,15 @@ def main(page: ft.Page):
 
             target_dir = app_state.get("output_dir", OUTPUT_DIR)
 
-            # Önce aynı video id'sine sahip bir mp3 zaten var mı kontrol et
+            # Önce aynı sıra numarasıyla (1., 2., 3. ...) başlayan bir mp3 zaten var mı kontrol et
             try:
                 already_exists = False
-                if video_id:
-                    for f in os.listdir(target_dir):
-                        if f.lower().endswith(".mp3") and f.lower().startswith(video_id.lower() + "_"):
-                            already_exists = True
-                            break
-                else:
-                    title_prefix = (title or "")[:8].lower()
-                    if title_prefix:
-                        for f in os.listdir(target_dir):
-                            if f.lower().endswith(".mp3") and title_prefix in f.lower():
-                                already_exists = True
-                                break
+                order_prefix = f"{display_index + 1}.".lower()
+                for f in os.listdir(target_dir):
+                    lower = f.lower()
+                    if lower.endswith(".mp3") and lower.startswith(order_prefix):
+                        already_exists = True
+                        break
                 if already_exists:
                     update_box_label(orig_index, "zaten indirildi", ft.Colors.GREEN)
                     set_status(f"Atlandı (zaten mevcut): {title}", "green")
@@ -217,7 +211,10 @@ def main(page: ft.Page):
                     filepath = download_as_mp3(
                         url,
                         target_dir,
+                        progress_callback=None,
                         verbose=app_state.get("verbose_logging", VERBOSE_LOGGING),
+                        order_index=display_index,
+                        title_override=title,
                     )
                     update_box_label(orig_index, "başarılı", ft.Colors.GREEN)
                     set_status(f"Tamamlandı: {os.path.basename(filepath)}", "green")
